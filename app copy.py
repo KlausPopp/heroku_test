@@ -1,22 +1,12 @@
-from dash import Dash, callback, html, dcc
+import plotly.express as px
 import plotly.graph_objects as go
-import dash_bootstrap_components as dbc
+import dash
 import numpy as np
-import pandas as pd
-import matplotlib as mpl
-import gunicorn  # whilst your local machine's webserver doesn't need this, Heroku's linux webserver (i.e. dyno) does. I.e. This is your HTTP server
-from whitenoise import WhiteNoise  # for serving static files on Heroku
+from dash import dcc, html
 from dash.dependencies import Input, Output
 from influxdb_client import InfluxDBClient
 
-# Instantiate dash app
-app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
-
-# Reference the underlying flask app (Used by gunicorn webserver in Heroku production deployment)
-server = app.server
-
-# Enable Whitenoise for serving static files from Heroku (the /static folder is seen as root by Heroku)
-server.wsgi_app = WhiteNoise(server.wsgi_app, root="static/")
+import pandas as pd
 
 client = InfluxDBClient(
     url="https://westeurope-1.azure.cloud2.influxdata.com",
@@ -26,26 +16,20 @@ client = InfluxDBClient(
 query_api = client.query_api()
 mapbox_token = "pk.eyJ1IjoiY2k0cmFpbCIsImEiOiJjbDNvdDhwZzIwb2JhM2xzNjgweDJiZDl3In0.uyeISrqmcKn_2Tb3ROS8Sw"
 
-# Define Dash layout
-def create_dash_layout(app):
-
-    # Set browser tab title
-    app.title = "Map application"
-
-    app.layout = html.Div(
-        html.Div(
-            [
-                html.H4("Vehicle View"),
-                dcc.Graph(id="the-map"),
-                dcc.Interval(
-                    id="interval-component",
-                    interval=1 * 1000,  # in milliseconds
-                    n_intervals=0,
-                ),
-            ]
-        )
+app = dash.Dash(__name__)
+app.layout = html.Div(
+    html.Div(
+        [
+            html.H4("Vehicle View"),
+            dcc.Graph(id="the-map"),
+            dcc.Interval(
+                id="interval-component",
+                interval=1 * 1000,  # in milliseconds
+                n_intervals=0,
+            ),
+        ]
     )
-    return app
+)
 
 
 @app.callback(Output("the-map", "figure"), Input("interval-component", "n_intervals"))
@@ -96,9 +80,5 @@ def update_graph(n):
     return fig
 
 
-# Construct the dash layout
-create_dash_layout(app)
-
-# Run flask app
 if __name__ == "__main__":
-    app.run_server(debug=False, host="0.0.0.0", port=8050)
+    app.run_server(debug=False)
