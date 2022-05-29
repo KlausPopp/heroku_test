@@ -10,12 +10,12 @@ from dash.dependencies import Input, Output
 from influxdb_client import InfluxDBClient
 
 # Instantiate dash app
-app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
+app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
 
 # Reference the underlying flask app (Used by gunicorn webserver in Heroku production deployment)
 server = app.server
 
-# Enable Whitenoise for serving static files from Heroku (the /static folder is seen as root by Heroku)
+# Enable Whitenoise for serving static files from Heroku (the /static folder is seen as root by Heroku) NOT YET USED!
 server.wsgi_app = WhiteNoise(server.wsgi_app, root="static/")
 
 client = InfluxDBClient(
@@ -33,23 +33,36 @@ def create_dash_layout(app):
     app.title = "Map application"
 
     app.layout = html.Div(
-        html.Div(
-            [
-                html.H4("Vehicle View"),
-                dcc.Graph(id="the-map"),
-                dcc.Interval(
-                    id="interval-component",
-                    interval=1 * 1000,  # in milliseconds
-                    n_intervals=0,
-                ),
-            ]
-        )
+        [
+            html.Div(
+                [
+                    html.H4("Vehicle Locations"),
+                    dcc.Graph(id="the-map"),
+                    dcc.Interval(
+                        id="interval-component",
+                        interval=1 * 1000,  # in milliseconds
+                        n_intervals=0,
+                    ),
+                ]
+            ),
+            html.Div(
+                [
+                    html.H4("Braking and Speed"),
+                    dcc.Graph(id="brake-graph"),
+                    dcc.Interval(
+                        id="interval-component-brake",
+                        interval=1 * 1000,  # in milliseconds
+                        n_intervals=0,
+                    ),
+                ]
+            ),
+        ]
     )
     return app
 
 
 @app.callback(Output("the-map", "figure"), Input("interval-component", "n_intervals"))
-def update_graph(n):
+def update_map(n):
     df = query_api.query_data_frame(
         """from(bucket: "v-data") 
   |> range(start: -3m)
@@ -61,7 +74,7 @@ def update_graph(n):
   |> group()
   |> pivot(rowKey:["_time", "line", "run"], columnKey: ["_field"], valueColumn: "_value") """
     )
-    print(np.dstack((df["vehicle-speed"], df["run"])))
+    # print(np.dstack((df["vehicle-speed"], df["run"])))
     fig = go.Figure()
     fig.add_trace(
         go.Scattermapbox(
@@ -76,8 +89,8 @@ def update_graph(n):
             text=df["line"],
             textfont={"family": "Arial", "size": 12, "color": "Black"},
             textposition="bottom right",
-            customdata=np.stack((df["vehicle-speed"], df["run"])),
-            hovertemplate="Run: %{customdata[1]}<br>Speed: %{customdata[0]} km/h",
+            # customdata=np.stack((df["vehicle-speed"], df["run"])),
+            # hovertemplate="Run: %{customdata[1]}<br>Speed: %{customdata[0]} km/h",
         )
     )
 
@@ -93,6 +106,59 @@ def update_graph(n):
     )
     fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
     fig["layout"]["uirevision"] = "Hello"  # keep users zoom&pan
+    return fig
+
+
+@app.callback(
+    Output("brake-graph", "figure"), Input("interval-component-brake", "n_intervals")
+)
+def update_brake(n):
+    df = query_api.query_data_frame(
+        'from(bucket: "v-data") '
+        "|> range(start: -3m) "
+        '|> filter(fn: (r) => r.line=="lineA" and (r["_measurement"] == "speed" or  r["_measurement"] == "control")) '
+        '|> filter(fn: (r) => r["_field"] == "vehicle-speed" or r["_field"] == "brake-pressure") '
+        '|> keep(columns: ["_value", "_field", "_time"]) '
+        "|> aggregateWindow(every: 1s, fn: mean) "
+        "|> fill(usePrevious: true) "
+        "|> group() "
+        '|> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value") '
+    )
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=df["_time"],
+            y=df["brake-pressure"],
+            name="bp",
+            line=dict(color="firebrick"),
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=df["_time"],
+            y=df["vehicle-speed"],
+            name="vs",
+            yaxis="y2",
+            line=dict(color="green"),
+        )
+    )
+
+    fig.update_layout(
+        yaxis=dict(
+            title="psi",
+            titlefont=dict(color="firebrick"),
+            tickfont=dict(color="firebrick"),
+        ),
+        yaxis2=dict(
+            title="km/h",
+            titlefont=dict(color="green"),
+            tickfont=dict(color="green"),
+            anchor="free",
+            overlaying="y",
+            side="right",
+            position=1,
+        ),
+    )
     return fig
 
 
