@@ -1,3 +1,4 @@
+from turtle import update
 from dash import Dash, callback, html, dcc
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
@@ -8,9 +9,17 @@ import gunicorn  # whilst your local machine's webserver doesn't need this, Hero
 from whitenoise import WhiteNoise  # for serving static files on Heroku
 from dash.dependencies import Input, Output
 from influxdb_client import InfluxDBClient
+from colour import Color
+
+
+# List of N colors between start_color and end_color
+N = 10
+start_color = "#ff0000"
+end_color = "#00264c"
+colorscale = [x.hex for x in list(Color(start_color).range_to(Color(end_color), N))]
 
 # Instantiate dash app
-app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
+app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY], update_title=None)
 
 # Reference the underlying flask app (Used by gunicorn webserver in Heroku production deployment)
 server = app.server
@@ -40,7 +49,7 @@ def create_dash_layout(app):
                     dcc.Graph(id="the-map"),
                     dcc.Interval(
                         id="interval-component",
-                        interval=1 * 1000,  # in milliseconds
+                        interval=1 * 2000,  # in milliseconds
                         n_intervals=0,
                     ),
                 ]
@@ -65,34 +74,63 @@ def create_dash_layout(app):
 def update_map(n):
     df = query_api.query_data_frame(
         """from(bucket: "v-data") 
-  |> range(start: -3m)
+  |> range(start: -30s)
   |> filter(fn: (r) => r["_measurement"] == "position" or r["_measurement"] == "speed")
   |> filter(fn: (r) => r["_field"] == "lat" or r["_field"] == "lon" or r["_field"] == "vehicle-speed")
   |> aggregateWindow(every: 1s, fn: mean)
   |> fill(usePrevious: true)
-  |> last()
   |> group()
   |> pivot(rowKey:["_time", "line", "run"], columnKey: ["_field"], valueColumn: "_value") """
     )
     # print(np.dstack((df["vehicle-speed"], df["run"])))
+
     fig = go.Figure()
-    fig.add_trace(
-        go.Scattermapbox(
-            lat=df["lat"],
-            lon=df["lon"],
-            marker={
-                "symbol": "bus",
-                "color": "red",
-                "size": 15,
-            },
-            mode="markers+text",
-            text=df["line"],
-            textfont={"family": "Arial", "size": 12, "color": "Black"},
-            textposition="bottom right",
-            # customdata=np.stack((df["vehicle-speed"], df["run"])),
-            # hovertemplate="Run: %{customdata[1]}<br>Speed: %{customdata[0]} km/h",
+
+    lines = df["line"].unique()
+    lines.sort()
+
+    i = 0
+
+    for line in lines:
+        ldf = df[df.line.eq(line)]
+        color = colorscale[i % N]
+        last = ldf.iloc[-1]
+        fig.add_trace(
+            go.Scattermapbox(
+                legendgroup=line,
+                showlegend=False,
+                mode="markers+lines",
+                lon=ldf["lon"],
+                lat=ldf["lat"],
+                marker={"size": 8, "color": color},
+                hoverinfo="skip",
+                uid="123",
+            )
         )
-    )
+        fig.add_trace(
+            go.Scattermapbox(
+                legendgroup=line,
+                name=line,
+                lat=[last["lat"]],
+                lon=[last["lon"]],
+                marker={
+                    "size": 25,
+                    "color": color,
+                    "allowoverlap": True,
+                },
+                mode="markers+text",
+                text=[line],
+                textfont={"family": "Arial", "size": 20, "color": color},
+                textposition="top right",
+                customdata=[[line, last["vehicle-speed"]]],
+                texttemplate="%{customdata[0]}<br>%{customdata[1]} km/h",
+                # customdata=np.stack((df["vehicle-speed"], df["run"])),
+                # hovertemplate="Run: %{customdata[1]}<br>Speed: %{customdata[0]} km/h",
+                uid="456",
+            )
+        )
+
+        i += 1
 
     # openstreetmap and other GL JS styles aren't working with text and specific markers
     # fig.update_layout(mapbox_style="open-street-map")
@@ -102,6 +140,11 @@ def update_map(n):
             "style": "streets",
             "center": {"lat": 52.4, "lon": -1.5},
             "zoom": 10,
+        },
+        legend={
+            "yanchor": "top",
+            "xanchor": "left",
+            "x": 0,
         },
     )
     fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
