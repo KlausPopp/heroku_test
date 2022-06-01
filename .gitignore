@@ -2,3 +2,5 @@
 venv
 *__pycache__*
 exp/
+env.ps1
+.env
