@@ -1,3 +1,4 @@
+import os
 from dash import Dash, callback, html, dcc
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
@@ -26,13 +27,17 @@ server = app.server
 # Enable Whitenoise for serving static files from Heroku (the /static folder is seen as root by Heroku) NOT YET USED!
 # server.wsgi_app = WhiteNoise(server.wsgi_app, root="static/")
 
+influx_token = os.getenv("INFLUX_TOKEN")
+mapbox_token = os.getenv("MAPBOX_TOKEN")
+
 client = InfluxDBClient(
     url="https://westeurope-1.azure.cloud2.influxdata.com",
-    token="TaFEe3NXSIEKqJAISbDFwo6vIQgHbp2HFmTn3N7sRzw5hSZMohYciXeH4uN2ruCH87JONXfEQgPRKv_O70rzbg==",
+    token=influx_token,
     org="klaus.popp@ci4rail.com",
 )
 query_api = client.query_api()
-mapbox_token = "pk.eyJ1IjoiY2k0cmFpbCIsImEiOiJjbDNvdDhwZzIwb2JhM2xzNjgweDJiZDl3In0.uyeISrqmcKn_2Tb3ROS8Sw"
+print(f"influx_token={influx_token}")
+print(f"mapbox_token={mapbox_token}")
 
 # Define Dash layout
 def create_dash_layout(app):
