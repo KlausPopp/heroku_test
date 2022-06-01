@@ -1,4 +1,3 @@
-from turtle import update
 from dash import Dash, callback, html, dcc
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
@@ -25,7 +24,7 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.DARKLY], update_title=None
 server = app.server
 
 # Enable Whitenoise for serving static files from Heroku (the /static folder is seen as root by Heroku) NOT YET USED!
-server.wsgi_app = WhiteNoise(server.wsgi_app, root="static/")
+# server.wsgi_app = WhiteNoise(server.wsgi_app, root="static/")
 
 client = InfluxDBClient(
     url="https://westeurope-1.azure.cloud2.influxdata.com",
